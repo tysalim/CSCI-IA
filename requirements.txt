@@ -1,0 +1,9 @@
+Flask
+SQLAlchemy
+Werkzeug
+beautifulsoup4
+requests
+lxml
+selenium
+APScheduler
+python-dotenv

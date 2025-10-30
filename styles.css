@@ -1,0 +1,16 @@
+body {
+  scroll-behavior: smooth;
+}
+
+.navbar .btn {
+  border-radius: 999px;
+}
+
+.card-title {
+  line-height: 1.3;
+}
+
+.list-group-item {
+  font-size: 0.95rem;
+}
+

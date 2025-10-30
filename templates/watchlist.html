@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% block title %}Watchlist • PriceTrak{% endblock %}
+{% block content %}
+  <h3 class="fw-bold">Your Watchlist</h3>
+  {% if not items %}
+    <p class="text-muted">No items yet. Paste a link on the dashboard and add to your watchlist.</p>
+  {% else %}
+    <div class="table-responsive">
+      <table class="table table-striped align-middle">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Platform</th>
+            <th>Seller</th>
+            <th>Price</th>
+            <th>Last Update</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for w in items %}
+            <tr>
+              <td><a href="/product/{{ w.product.id }}">{{ w.product.name }}</a></td>
+              <td class="text-uppercase"><span class="badge bg-secondary">{{ w.product.platform }}</span></td>
+              <td>{{ w.seller or w.product.seller or '—' }}</td>
+              <td>{{ w.product.currency }} {{ '%.2f'|format(w.product.last_price or 0) }}</td>
+                  <td>{% if w.product.last_checked_at %}{{ w.product.last_checked_at.strftime('%Y-%m-%d %H:%M:%S') }}{% else %}—{% endif %}</td>
+              <td class="text-end">
+                <form action="/unwatch/{{ w.product.id }}" method="POST">
+                  <button class="btn btn-sm btn-outline-danger">Remove</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+{% endblock %}
+
+
