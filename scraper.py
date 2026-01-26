@@ -1,77 +1,93 @@
 import re
 import time
 import json
+import os
 from typing import Optional
 
 import requests
 from bs4 import BeautifulSoup
 
-SUPPORTED_PLATFORMS = ['amazon', 'lazada']
+# Debug flag (set SCRAPER_DEBUG=1 to enable)
+DEBUG = os.environ.get("SCRAPER_DEBUG", "").lower() in ("1", "true", "yes")
+
+# Optional dependencies
+try:
+    from playwright.sync_api import sync_playwright
+except Exception:
+    sync_playwright = None
 
 try:
     from selenium import webdriver
     from selenium.webdriver.chrome.options import Options as ChromeOptions
 except Exception:
-    webdriver = None
-    ChromeOptions = None
+    webdriver = ChromeOptions = None
+
+
+# ----------------------------
+# Models
+# ----------------------------
 
 class Product:
-    def __init__(self, platform, id, name, seller, price, url):
+    def __init__(self, platform, product_id, name, seller, price, url):
         self.platform = platform
-        self.platform_product_id = id
+        self.platform_product_id = product_id
         self.name = name
         self.seller = seller
         self.price = price
         self.url = url
 
+    def set_price(self, price: float):
+        if price and self.price == 0.0:
+            self.price = price
+
     def __repr__(self):
-        return f"<Product(platform={self.platform}, id={self.platform_product_id}, name={self.name}, price={self.price})>"
-    
-    def pretty_print(self):
-        return self.__dict__
-    
-    def set_price(self, price):
-        self.price = price
+        return (
+            f"<Product(platform={self.platform}, "
+            f"id={self.platform_product_id}, "
+            f"name={self.name}, price={self.price})>"
+        )
+
 
 class LazadaProduct(Product):
-    def __init__(self, id, name, seller, price, url):
-        super().__init__('lazada', id, name, seller, price, url)
-
-class AmazonProduct(Product):
-    def __init__(self, id, name, seller, price, url):
-        super().__init__('amazon', id, name, seller, price, url)
+    def __init__(self, product_id, name, seller, price, url):
+        super().__init__("lazada", product_id, name, seller, price, url)
 
 
-def identify_platform(url: str):
-    u = (url or '').lower()
-    if 'amazon' in u:
-        return 'amazon'
-    if 'lazada' in u:
-        return 'lazada'
-    return None
+# ----------------------------
+# Helpers
+# ----------------------------
+
+def identify_platform(url: str) -> Optional[str]:
+    return "lazada" if "lazada" in (url or "").lower() else None
 
 
-def _requests_get(url: str):
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36'
-    }
+def _requests_get(url: str) -> Optional[str]:
     try:
-        resp = requests.get(url, headers=headers, timeout=25)
-        if resp.status_code == 200:
-            return resp.text
+        resp = requests.get(
+            url,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36"
+                )
+            },
+            timeout=25,
+        )
+        return resp.text if resp.status_code == 200 else None
     except Exception:
         return None
-    return None
 
 
-def _selenium_get(url: str):
-    if webdriver is None or ChromeOptions is None:
+def _selenium_get(url: str) -> Optional[str]:
+    if not webdriver or not ChromeOptions:
         return None
+
     try:
         options = ChromeOptions()
-        options.add_argument('--headless=new')
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument("--headless=new")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+
         driver = webdriver.Chrome(options=options)
         try:
             driver.get(url)
@@ -83,161 +99,157 @@ def _selenium_get(url: str):
         return None
 
 
-def _parse_platform_product_id(url: str, platform: str):
-    if platform == 'amazon':
-        m = re.search(r'i\.(\d+)\.(\d+)', url or '')
-        return f"{m.group(1)}_{m.group(2)}" if m else (url or '')
-    if platform == 'lazada':
-        m = re.search(r'-i(\d+)\.html', url or '')
-        return m.group(1) if m else (url or '')
-    return url
+def _parse_lazada_product_id(url: str) -> str:
+    m = re.search(r"-i(\d+)\.html", url or "")
+    return m.group(1) if m else url
 
 
 def _extract_price(text: Optional[str]) -> float:
     if not text:
         return 0.0
-    # Keep digits, dots and commas
-    cleaned = re.sub(r'[^\d\.,]', '', text)
+
+    cleaned = re.sub(r"[^\d.,]", "", text)
     if not cleaned:
         return 0.0
 
-    # - If there's exactly one dot, treat dot as decimal separator and remove commas.
-    # - If there's no dot and exactly one comma, treat comma as decimal separator.
-    # - Otherwise remove commas (thousands separators) and keep dots.
-    if cleaned.count('.') == 1:
-        cleaned = cleaned.replace(',', '')
-    elif cleaned.count('.') == 0 and cleaned.count(',') == 1:
-        cleaned = cleaned.replace(',', '.')
+    if cleaned.count(".") == 1:
+        cleaned = cleaned.replace(",", "")
+    elif cleaned.count(".") == 0 and cleaned.count(",") == 1:
+        cleaned = cleaned.replace(",", ".")
     else:
-        cleaned = cleaned.replace(',', '')
+        cleaned = cleaned.replace(",", "")
 
     try:
         return float(cleaned)
+    except ValueError:
+        m = re.search(r"(\d+(?:\.\d+)?)", cleaned)
+        return float(m.group(1)) if m else 0.0
+
+
+# ----------------------------
+# Lazada UI Scraper
+# ----------------------------
+
+def _scrape_lazada_ui_price(url: str) -> Optional[float]:
+    if not sync_playwright:
+        return None
+
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(url, wait_until="networkidle", timeout=30000)
+
+            page.mouse.wheel(0, 800)
+            page.wait_for_timeout(1500)
+
+            page.wait_for_function(
+                """() => [...document.querySelectorAll("span,div")]
+                .some(e => e.innerText?.includes("₱"))""",
+                timeout=20000,
+            )
+
+            text = page.inner_text("body")
+            browser.close()
+
+        m = re.search(r"₱\s*([\d,]+(?:\.\d+)?)", text or "")
+        return float(m.group(1).replace(",", "")) if m else None
     except Exception:
-        # Fallback: extract first numeric group with optional decimal
-        m = re.search(r'(\d+(?:\.\d+)?)', cleaned)
-        if m:
-            try:
-                return float(m.group(1))
-            except Exception:
-                return 0.0
-    return 0.0
+        if DEBUG:
+            import traceback
+            print(traceback.format_exc())
+        return None
 
 
-def _scrape_amazon(url: str, soup: BeautifulSoup):
-    amazon_product = AmazonProduct(
-        id=_parse_platform_product_id(url, 'amazon'),
-        name='',
-        seller='',
+# ----------------------------
+# Lazada Scraper
+# ----------------------------
+
+def _scrape_lazada(url: str, soup: BeautifulSoup) -> dict:
+    product = LazadaProduct(
+        product_id=_parse_lazada_product_id(url),
+        name="",
+        seller="",
         price=0.0,
-        url=url
-    )
-    # normalize title
-    title = soup.find('title')
-    if title:
-        amazon_product.name = title.get_text(strip=True)
-
-    # price extraction (primitive)
-    price_el = soup.select_one('span.a-price > span.a-offscreen') or soup.select_one('#priceblock_ourprice')
-    if price_el:
-        amazon_product.set_price(_extract_price(price_el.get_text(strip=True)))
-
-    # seller extraction (primitive)
-    seller_el = soup.select_one('#sellerProfileTriggerId') or soup.select_one('#bylineInfo') or soup.select_one('#merchant-info')
-    if seller_el:
-        amazon_product.seller = seller_el.get_text(strip=True)
-        amazon_product.seller_scraped = True
-    else:
-        amazon_product.seller_scraped = False
-
-    return amazon_product.pretty_print()
-
-
-def _scrape_lazada(url: str, soup: BeautifulSoup):
-    lazada_product = LazadaProduct(
-        id=_parse_platform_product_id(url, 'lazada'),
-        name='',
-        seller='',
-        price=0.0,
-        url=url
+        url=url,
     )
 
-    for sc in soup.find_all('script', type=re.compile('application/(ld\\+json|json)')):
+    # 1) UI price (highest priority)
+    product.set_price(_scrape_lazada_ui_price(url))
+
+    # 2) DOM price fallback
+    if product.price == 0.0:
+        for selector in (
+            "span.pdp-v2-product-price-content-salePrice-amount",
+            "span.pdp-v2-product-price-content-originalPrice-amount",
+        ):
+            el = soup.select_one(selector)
+            if el:
+                product.set_price(_extract_price("".join(el.stripped_strings)))
+                break
+
+    # 3) JSON-LD
+    for sc in soup.find_all("script", type=re.compile("application/(ld\\+json|json)")):
         try:
             data = json.loads(sc.get_text(strip=True))
         except Exception:
             continue
-        if isinstance(data, dict) and ((data.get('@type') and str(data.get('@type')).lower() == 'product') or data.get('name')):
-            lazada_product.name = data.get('name') or lazada_product.name
-            offers = data.get('offers')
-            if isinstance(offers, dict):
-                seller_info = offers.get('seller')
-                if isinstance(seller_info, dict):
-                    lazada_product.seller = lazada_product.seller or seller_info.get('name')
-                price_from_ld = offers.get('price')
-                if price_from_ld:
-                    lazada_product.set_price(lazada_product.price or _extract_price(str(price_from_ld)))
-                    
-    # 1) DOM Price Selectors
-    if lazada_product.price == 0.0:
-        primary = soup.select_one('span.pdp-v2-product-price-content-salePrice-amount')
-        if primary:
-            txt = ''.join(primary.stripped_strings)
-            lazada_product.set_price(_extract_price(txt) or lazada_product.price)
-    
-    
-    # 2) Price from JS var `pdpTrackingData`
-    js_price_str = None
-    for sc in soup.find_all('script'):
-        txt = sc.get_text() or ''
-        if 'pdpTrackingData' not in txt:
+
+        if not isinstance(data, dict):
             continue
+
+        product.name = product.name or data.get("name", "")
+
+        offers = data.get("offers")
+        if product.price == 0.0 and isinstance(offers, dict):
+            product.set_price(_extract_price(str(offers.get("price"))))
+
+    # 4) pdpTrackingData
+    for sc in soup.find_all("script"):
+        txt = sc.get_text() or ""
+        if "pdpTrackingData" not in txt:
+            continue
+
         m = re.search(
-            r'var\s+pdpTrackingData\s*=\s*(?P<val>"(?:\\.|[^"])*"|\{.*?\})\s*;',
-            txt, re.S
+            r"var\s+pdpTrackingData\s*=\s*(\".*?\"|\{.*?\});",
+            txt,
+            re.S,
         )
         if not m:
             continue
-        val = m.group('val').strip()
+
         try:
-            # quoted JS-string containing JSON: first json.loads to unquote/unescape, then parse
-            if val.startswith('"') and val.endswith('"'):
-                inner = json.loads(val)    # unescape the JS quoted string -> returns JSON text
-                obj = json.loads(inner)   # parse JSON text
-            else:
-                obj = json.loads(val)     # parse raw JSON object
+            raw = m.group(1)
+            data = json.loads(json.loads(raw)) if raw.startswith('"') else json.loads(raw)
         except Exception:
             continue
-        # example key is "pdt_price" containing a currency-formatted string like "₱305.00"
-        pdt_price = obj.get('pdt_price') or obj.get('price') or obj.get('product_price')
-        if pdt_price:
-            js_price_str = pdt_price
-            break
 
-    if js_price_str:
-        lazada_product.set_price(_extract_price(js_price_str) or lazada_product.price)
-        # pdpTrackingData often contains brand_name and pdt_price; extract seller from brand_name if present
-        try:
-            # obj was parsed above; reuse the last parsed obj variable if available
-            if 'obj' in locals() and isinstance(obj, dict):
-                brand = obj.get('brand_name') or obj.get('brand')
-                if brand:
-                    # ensure primitive string
-                    lazada_product.seller = str(brand).strip()
-        except Exception:
-            pass
+        product.set_price(_extract_price(
+            data.get("pdt_price")
+            or data.get("price")
+            or data.get("product_price")
+        ))
 
-    return lazada_product.pretty_print()
+        product.seller = product.seller or str(
+            data.get("brand_name") or data.get("brand") or ""
+        ).strip()
+        break
 
-def scrape_product(url: str, platform: str):
-    html = _requests_get(url)
+    return vars(product)
+
+
+# ----------------------------
+# Public API
+# ----------------------------
+
+def scrape_product(url: str, platform: str) -> dict:
+    html = _requests_get(url) or _selenium_get(url)
     if not html:
-        html = _selenium_get(url)
-    if not html:
-        raise RuntimeError('Product page cannot be retrieved!')
-    soup = BeautifulSoup(html, 'lxml')
-    if platform == 'amazon':
-        return _scrape_amazon(url, soup)
-    if platform == 'lazada':
+        raise RuntimeError("Product page cannot be retrieved!")
+
+    soup = BeautifulSoup(html, "lxml")
+
+    if platform == "lazada":
         return _scrape_lazada(url, soup)
-    raise ValueError('Platform not supported! Please try a Lazada or Amazon product URL.')
+
+    raise ValueError("Platform not supported! Please try a Lazada product URL.")

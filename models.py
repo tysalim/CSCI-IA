@@ -18,7 +18,6 @@ class User(Base):
 
     watchlist_items = relationship('Watchlist', back_populates='user', cascade='all, delete-orphan')
 
-    # helper methods to work with the 2D array (matrix)
     def get_matrix(self):
         """Return the stored matrix as a Python list of lists."""
         if not self.matrix:
@@ -80,7 +79,6 @@ class Watchlist(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     product_id = Column(Integer, ForeignKey('products.id'), nullable=False)
-    # store seller at the time the item was added to the watchlist
     seller = Column(String(255))
     notify_price_drop = Column(Boolean, default=True)
     last_notified_price = Column(Float)

@@ -24,10 +24,14 @@ def get_env(name: str, default: str = ""):
     return os.environ.get(name, default)
 
 
+# Auto-scrape interval configuration
+AUTO_SCRAPE_MINUTES = int(get_env('AUTO_SCRAPE_MINUTES', '180'))
+
+
 app = Flask(__name__, template_folder='templates', static_folder='.')
 app.secret_key = get_env('SECRET_KEY', 'dev')
 
-engine = create_engine('sqlite:///price_trax.db', future=True)
+engine = create_engine('sqlite:///price_trak.db', future=True)
 
 # Ensure tables exist
 Base.metadata.create_all(engine)
@@ -55,7 +59,7 @@ ensure_watchlist_seller_column(engine)
 Session = sessionmaker(bind=engine)
 
 
-def _normalize_text(val: Any) -> str:
+def _normalize_text(val: Any):
     """Normalize a value that may be a BeautifulSoup Tag or other object into a stripped string or None."""
     if val is None:
         return None
@@ -124,12 +128,9 @@ def insert_watchlist(db, user_id, product):
     key = (product.name or '').lower()
     i = bisect_left(names, key)
     if i != len(names) and names[i] == key:
-        # exists (by name) - check if same product_id
         for w in items:
             if w.product_id == product.id:
                 return False
-        # name match but different product_id; treat as not existing and insert
-    # create new watchlist row; persist seller snapshot
     w = Watchlist(user_id=user_id, product_id=product.id, last_notified_price=product.last_price, seller=product.seller)
     db.add(w)
     db.commit()
@@ -143,7 +144,6 @@ def remove_watchlist(db, user_id, product):
     i = bisect_left(names, key)
     if i == len(names) or names[i] != key:
         return False
-    # find matching Watchlist row(s) with same product_id
     for w in items:
         if w.product_id == product.id:
             db.delete(w)
@@ -180,13 +180,12 @@ def register():
     if db.query(User).filter((User.email == email) | (User.username == username)).first():
         flash('Email or username already in use!', 'danger')
         return redirect(url_for('signup_page'))
-    # initialize matrix as an empty 2D list (can be customized)
-    initial_matrix = json.dumps([[]])
+    initial_matrix = json.dumps([[username, generate_password_hash(password)]])
     user = User(email=email, username=username, password_hash=generate_password_hash(password), matrix=initial_matrix)
     db.add(user)
     db.commit()
     flask_session['uid'] = user.id
-    flash('Account created successfully! Welcome to PriceTrak.', "success")
+    flash(f'Account created successfully! Welcome to PriceTrak, {username}.', "success")
     return redirect(url_for('dashboard'))
 
 
@@ -209,7 +208,7 @@ def login():
         flash('Invalid credentials!', "danger")
         return redirect(url_for('login_page'))
     flask_session['uid'] = user.id
-    flash('Logged in! Welcome to PriceTrak.', "success")
+    flash(f'Logged in! Welcome to PriceTrak, {user.username}.', "success")
     return redirect(url_for('dashboard'))
 
 
@@ -378,23 +377,38 @@ def send_email(to_email: str, subject: str, body: str):
 
 
 def refresh_prices_and_notify():
+    print(f"\n[AUTO_SCRAPE] Starting auto-scrape of watchlisted items at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     db = Session()
     # Get unique watchlisted products
     product_ids = {w.product_id for w in db.query(Watchlist).all()}
+    
+    if not product_ids:
+        print("[AUTO_SCRAPE] No watchlisted products found.")
+        return
+    
+    print(f"[AUTO_SCRAPE] Found {len(product_ids)} unique product(s) in watchlist.")
+    
+    scraped_count = 0
     for pid in product_ids:
         product = db.query(Product).get(pid)
         if not product:
             continue
         try:
+            print(f"  [AUTO_SCRAPE] Scraping: {product.name} ({product.platform})")
             data = scrape_product(product.url, product.platform)
         except Exception:
+            print(f"  [AUTO_SCRAPE] ⚠️  Failed to scrape: {product.name}")
             continue
+        
+        scraped_count += 1
         old_price = product.last_price or 0.0
         new_price = data.get('price') or old_price
         product.last_price = new_price
         product.last_checked_at = datetime.now()
         db.add(PriceHistory(product_id=product.id, price=new_price, currency=product.currency))
         db.commit()
+        
+        print(f"    ✓ Price: {product.currency} {new_price} (was {old_price})")
 
         if new_price < old_price:
             # Notify each watcher
@@ -414,15 +428,19 @@ def refresh_prices_and_notify():
                     )
                     w.last_notified_price = new_price
             db.commit()
+    
+    print(f"[AUTO_SCRAPE] Completed: {scraped_count}/{len(product_ids)} products scraped successfully.\n")
 
 
 if BackgroundScheduler is not None:
     scheduler = BackgroundScheduler(daemon=True)
-    interval_minutes = int(get_env('REFRESH_MINUTES', '60'))
-    scheduler.add_job(refresh_prices_and_notify, 'interval', minutes=interval_minutes, id='refresh_job', replace_existing=True)
+    scheduler.add_job(refresh_prices_and_notify, 'interval', minutes=AUTO_SCRAPE_MINUTES, id='refresh_job', replace_existing=True)
+    print(f"[SCHEDULER] Auto-scrape job scheduled every {AUTO_SCRAPE_MINUTES} minute(s).")
     try:
         scheduler.start()
+        print("[SCHEDULER] Background scheduler started.")
     except Exception:
+        print("[SCHEDULER] Failed to start background scheduler.")
         pass
 
 

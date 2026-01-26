@@ -28,16 +28,94 @@
 
   {% if product.price_history %}
     <div class="mt-4">
-      <h5>Recent Price History</h5>
-      <ul class="list-group">
-        {% for p in product.price_history[:10] %}
-          <li class="list-group-item d-flex justify-content-between align-items-center">
-            <span>{{ p.created_at.strftime('%Y-%m-%d %H:%M:%S') if p.created_at else '' }}</span>
-            <span>{{ p.currency }} {{ '%.2f'|format(p.price) }}</span>
-          </li>
-        {% endfor %}
-      </ul>
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5>Recent Price History</h5>
+        <div class="btn-group" role="group">
+          <button type="button" class="btn btn-outline-secondary active" id="view-chart" onclick="showChart()">📈 Chart</button>
+          <button type="button" class="btn btn-outline-secondary" id="view-list" onclick="showList()">📋 List</button>
+        </div>
+      </div>
+
+      <!-- Chart View -->
+      <div id="chart-container" style="display: block; position: relative; height: 300px; margin-bottom: 20px;">
+        <canvas id="priceChart"></canvas>
+      </div>
+
+      <!-- List View -->
+      <div id="list-container" style="display: none;">
+        <ul class="list-group">
+          {% for p in product.price_history[:10] %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              <span>{{ p.created_at.strftime('%Y-%m-%d %H:%M:%S') if p.created_at else '' }}</span>
+              <span>{{ p.currency }} {{ '%.2f'|format(p.price) }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
     </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+      let priceChart = null;
+
+      function initChart() {
+        const prices = [
+          {% for p in product.price_history|reverse %}
+            { price: {{ p.price }}, date: "{{ p.created_at.strftime('%m-%d %H:%M') if p.created_at else '' }}" }
+            {%- if not loop.last %},{% endif %}
+          {% endfor %}
+        ];
+
+        const ctx = document.getElementById('priceChart').getContext('2d');
+        priceChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: prices.map(p => p.date),
+            datasets: [{
+              label: 'Price ({{ product.currency }})',
+              data: prices.map(p => p.price),
+              borderColor: '#0d6efd',
+              backgroundColor: 'rgba(13, 110, 253, 0.1)',
+              borderWidth: 2,
+              tension: 0.3,
+              fill: true,
+              pointRadius: 4,
+              pointBackgroundColor: '#0d6efd',
+              pointBorderColor: '#fff',
+              pointBorderWidth: 2
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: true }
+            },
+            scales: {
+              y: { beginAtZero: false }
+            }
+          }
+        });
+      }
+
+      function showChart() {
+        document.getElementById('chart-container').style.display = 'block';
+        document.getElementById('list-container').style.display = 'none';
+        document.getElementById('view-chart').classList.add('active');
+        document.getElementById('view-list').classList.remove('active');
+        if (!priceChart) initChart();
+      }
+
+      function showList() {
+        document.getElementById('chart-container').style.display = 'none';
+        document.getElementById('list-container').style.display = 'block';
+        document.getElementById('view-chart').classList.remove('active');
+        document.getElementById('view-list').classList.add('active');
+      }
+
+      // Initialize chart on page load
+      document.addEventListener('DOMContentLoaded', initChart);
+    </script>
   {% endif %}
 {% endblock %}
 
