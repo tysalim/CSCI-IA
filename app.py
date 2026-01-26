@@ -24,7 +24,6 @@ def get_env(name: str, default: str = ""):
     return os.environ.get(name, default)
 
 
-# Auto-scrape interval configuration
 AUTO_SCRAPE_MINUTES = int(get_env('AUTO_SCRAPE_MINUTES', '180'))
 
 
