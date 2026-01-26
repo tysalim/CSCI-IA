@@ -32,17 +32,14 @@ app.secret_key = get_env('SECRET_KEY', 'dev')
 
 engine = create_engine('sqlite:///price_trak.db', future=True)
 
-# Ensure tables exist
 Base.metadata.create_all(engine)
 
-# Ensure the users table has the 'matrix' column (2D-array stored as JSON text).
+
 def ensure_user_matrix_column(engine):
-    # SQLite: check pragma table_info using SQLAlchemy text()
     with engine.begin() as conn:
         res = conn.execute(text("PRAGMA table_info('users')"))
         cols = [r[1] for r in res.fetchall()]
         if 'matrix' not in cols:
-            # add column if missing (use ALTER TABLE in a transaction)
             conn.execute(text("ALTER TABLE users ADD COLUMN matrix TEXT DEFAULT '[]'"))
 
 ensure_user_matrix_column(engine)
