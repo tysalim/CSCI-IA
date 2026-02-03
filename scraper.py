@@ -2,6 +2,10 @@ import re
 import time
 import json
 import os
+import re
+import time
+import json
+import os
 from typing import Optional
 
 import requests
@@ -16,12 +20,8 @@ try:
 except Exception:
     sync_playwright = None
 
-        if product.price == 0.0 and isinstance(offers, dict):
-            product.set_price(_extract_price(str(offers.get("price"))))
-            if not product.seller and isinstance(offers, dict):
-                seller = offers.get("seller")
-                if isinstance(seller, dict):
-                    product.seller = _clean_seller_name(seller.get("name", ""))
+try:
+    from selenium import webdriver
     from selenium.webdriver.chrome.options import Options as ChromeOptions
 except Exception:
     webdriver = ChromeOptions = None
@@ -30,6 +30,7 @@ except Exception:
 # ----------------------------
 # Models
 # ----------------------------
+
 
 class Product:
     def __init__(self, platform, product_id, name, seller, price, url):
@@ -61,6 +62,7 @@ class LazadaProduct(Product):
 # Helpers
 # ----------------------------
 
+
 def identify_platform(url: str) -> Optional[str]:
     u = (url or "").lower()
     if "lazada" in u:
@@ -89,10 +91,10 @@ def _requests_get(url: str) -> Optional[str]:
 
 def _selenium_get(url: str) -> Optional[str]:
     if not webdriver or not ChromeOptions:
-            if not product.seller and isinstance(offers, dict):
-                seller = offers.get("seller")
-                if isinstance(seller, dict):
-                    product.seller = _clean_seller_name(seller.get("name", ""))
+        return None
+
+    try:
+        options = ChromeOptions()
         options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
@@ -120,7 +122,7 @@ def _parse_amazon_asin(url: str) -> Optional[str]:
     # Common Amazon URL ASIN patterns
     patterns = [
         r"/dp/([A-Z0-9]{10})",
-            product.seller = _clean_seller_name(seller_el.get_text(strip=True))
+        r"/gp/product/([A-Z0-9]{10})",
         r"/product/([A-Z0-9]{10})",
         r"ASIN=([A-Z0-9]{10})",
         r"/([A-Z0-9]{10})(?:[/?]|$)",
@@ -172,6 +174,7 @@ def _extract_price(text: Optional[str]) -> float:
 # Lazada UI Scraper
 # ----------------------------
 
+
 def _scrape_lazada_ui_price(url: str) -> Optional[float]:
     if not sync_playwright:
         return None
@@ -206,6 +209,7 @@ def _scrape_lazada_ui_price(url: str) -> Optional[float]:
 # ----------------------------
 # Lazada Scraper
 # ----------------------------
+
 
 def _scrape_lazada(url: str, soup: BeautifulSoup) -> dict:
     product = LazadaProduct(
@@ -284,6 +288,7 @@ def _scrape_lazada(url: str, soup: BeautifulSoup) -> dict:
 # Amazon Scraper (US)
 # ----------------------------
 
+
 def _scrape_amazon(url: str, soup: BeautifulSoup) -> dict:
     asin = _parse_amazon_asin(url) or ""
     product = Product(
@@ -316,7 +321,7 @@ def _scrape_amazon(url: str, soup: BeautifulSoup) -> dict:
             if not product.seller and isinstance(offers, dict):
                 seller = offers.get("seller")
                 if isinstance(seller, dict):
-                    product.seller = seller.get("name", "")
+                    product.seller = _clean_seller_name(seller.get("name", ""))
 
     # DOM selectors for price
     if product.price == 0.0:
@@ -344,7 +349,7 @@ def _scrape_amazon(url: str, soup: BeautifulSoup) -> dict:
     if not product.seller:
         seller_el = soup.select_one("#sellerProfileTriggerId") or soup.select_one("#bylineInfo")
         if seller_el:
-            product.seller = seller_el.get_text(strip=True)
+            product.seller = _clean_seller_name(seller_el.get_text(strip=True))
 
     return vars(product)
 
@@ -352,6 +357,7 @@ def _scrape_amazon(url: str, soup: BeautifulSoup) -> dict:
 # ----------------------------
 # Public API
 # ----------------------------
+
 
 def scrape_product(url: str, platform: str) -> dict:
     html = _requests_get(url) or _selenium_get(url)
