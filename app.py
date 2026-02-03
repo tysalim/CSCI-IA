@@ -24,7 +24,7 @@ def get_env(name: str, default: str = ""):
     return os.environ.get(name, default)
 
 
-AUTO_SCRAPE_MINUTES = int(get_env('AUTO_SCRAPE_MINUTES', '180'))
+AUTO_SCRAPE_MINUTES = int(get_env('AUTO_SCRAPE_MINUTES', '360'))
 
 
 app = Flask(__name__, template_folder='templates', static_folder='.')

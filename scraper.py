@@ -16,8 +16,12 @@ try:
 except Exception:
     sync_playwright = None
 
-try:
-    from selenium import webdriver
+        if product.price == 0.0 and isinstance(offers, dict):
+            product.set_price(_extract_price(str(offers.get("price"))))
+            if not product.seller and isinstance(offers, dict):
+                seller = offers.get("seller")
+                if isinstance(seller, dict):
+                    product.seller = _clean_seller_name(seller.get("name", ""))
     from selenium.webdriver.chrome.options import Options as ChromeOptions
 except Exception:
     webdriver = ChromeOptions = None
@@ -58,7 +62,12 @@ class LazadaProduct(Product):
 # ----------------------------
 
 def identify_platform(url: str) -> Optional[str]:
-    return "lazada" if "lazada" in (url or "").lower() else None
+    u = (url or "").lower()
+    if "lazada" in u:
+        return "lazada"
+    if re.search(r"https?://(www\.)?(smile\.)?amazon\.com", u):
+        return "amazon"
+    return None
 
 
 def _requests_get(url: str) -> Optional[str]:
@@ -80,10 +89,10 @@ def _requests_get(url: str) -> Optional[str]:
 
 def _selenium_get(url: str) -> Optional[str]:
     if not webdriver or not ChromeOptions:
-        return None
-
-    try:
-        options = ChromeOptions()
+            if not product.seller and isinstance(offers, dict):
+                seller = offers.get("seller")
+                if isinstance(seller, dict):
+                    product.seller = _clean_seller_name(seller.get("name", ""))
         options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
@@ -102,6 +111,39 @@ def _selenium_get(url: str) -> Optional[str]:
 def _parse_lazada_product_id(url: str) -> str:
     m = re.search(r"-i(\d+)\.html", url or "")
     return m.group(1) if m else url
+
+
+def _parse_amazon_asin(url: str) -> Optional[str]:
+    if not url:
+        return None
+
+    # Common Amazon URL ASIN patterns
+    patterns = [
+        r"/dp/([A-Z0-9]{10})",
+            product.seller = _clean_seller_name(seller_el.get_text(strip=True))
+        r"/product/([A-Z0-9]{10})",
+        r"ASIN=([A-Z0-9]{10})",
+        r"/([A-Z0-9]{10})(?:[/?]|$)",
+    ]
+
+    for p in patterns:
+        m = re.search(p, url)
+        if m:
+            return m.group(1)
+
+    return None
+
+
+def is_amazon_url(url: str) -> bool:
+    return bool(re.search(r"https?://(www\.)?(smile\.)?amazon\.com", (url or "").lower()))
+
+
+def _clean_seller_name(name: Optional[str]) -> str:
+    if not name:
+        return ""
+    # Remove occurrences of 'Visit The' (case-insensitive) and trim
+    cleaned = re.sub(r"visit\s+the\s*", "", name, flags=re.I).strip()
+    return cleaned
 
 
 def _extract_price(text: Optional[str]) -> float:
@@ -230,10 +272,79 @@ def _scrape_lazada(url: str, soup: BeautifulSoup) -> dict:
             or data.get("product_price")
         ))
 
-        product.seller = product.seller or str(
-            data.get("brand_name") or data.get("brand") or ""
-        ).strip()
+        product.seller = product.seller or _clean_seller_name(
+            str(data.get("brand_name") or data.get("brand") or "")
+        )
         break
+
+    return vars(product)
+
+
+# ----------------------------
+# Amazon Scraper (US)
+# ----------------------------
+
+def _scrape_amazon(url: str, soup: BeautifulSoup) -> dict:
+    asin = _parse_amazon_asin(url) or ""
+    product = Product(
+        platform="amazon",
+        product_id=asin,
+        name="",
+        seller="",
+        price=0.0,
+        url=url,
+    )
+
+    # Title
+    title_el = soup.select_one("#productTitle")
+    if title_el:
+        product.name = title_el.get_text(strip=True)
+
+    # Try JSON-LD offers first
+    for sc in soup.find_all("script", type=re.compile("application/(ld\\+json|json)")):
+        try:
+            data = json.loads(sc.get_text(strip=True))
+        except Exception:
+            continue
+
+        if isinstance(data, dict):
+            product.name = product.name or data.get("name", "")
+            offers = data.get("offers")
+            if product.price == 0.0 and isinstance(offers, dict):
+                product.set_price(_extract_price(str(offers.get("price"))))
+            # seller from offers
+            if not product.seller and isinstance(offers, dict):
+                seller = offers.get("seller")
+                if isinstance(seller, dict):
+                    product.seller = seller.get("name", "")
+
+    # DOM selectors for price
+    if product.price == 0.0:
+        selectors = (
+            "#priceblock_ourprice",
+            "#priceblock_dealprice",
+            "#priceblock_saleprice",
+            "#tp_price_block_total_price_ww > span",
+            "span.a-price span.a-offscreen",
+        )
+
+        for sel in selectors:
+            el = soup.select_one(sel)
+            if el:
+                product.set_price(_extract_price("".join(el.stripped_strings)))
+                break
+
+    # Fallback: any .a-offscreen price-like span
+    if product.price == 0.0:
+        el = soup.select_one("span.a-offscreen")
+        if el:
+            product.set_price(_extract_price("".join(el.stripped_strings)))
+
+    # Seller fallback
+    if not product.seller:
+        seller_el = soup.select_one("#sellerProfileTriggerId") or soup.select_one("#bylineInfo")
+        if seller_el:
+            product.seller = seller_el.get_text(strip=True)
 
     return vars(product)
 
@@ -252,4 +363,21 @@ def scrape_product(url: str, platform: str) -> dict:
     if platform == "lazada":
         return _scrape_lazada(url, soup)
 
-    raise ValueError("Platform not supported! Please try a Lazada product URL.")
+    if platform == "amazon":
+        return _scrape_amazon(url, soup)
+
+    raise ValueError("Platform not supported! Please try a Lazada or Amazon product URL.")
+
+
+def scrape_from_url(url: str) -> dict:
+    """Route a product URL to the appropriate scraper using regex validation.
+
+    Raises ValueError if URL is not recognized as a supported platform.
+    """
+    if is_amazon_url(url):
+        return scrape_product(url, "amazon")
+
+    if "lazada" in (url or "").lower():
+        return scrape_product(url, "lazada")
+
+    raise ValueError("URL not recognized as Amazon or Lazada product page.")
