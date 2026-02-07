@@ -1,43 +1,45 @@
 {% extends 'base.html' %}
 {% block title %}Product Listing • PriceTrak{% endblock %}
 {% block content %}
-  <a href="/" class="text-decoration-none">← Back</a>
-  <div class="card shadow-sm mt-3">
+  <a href="/" style="color: var(--text-secondary); text-decoration: none; margin-bottom: 1.5rem; display: inline-block;">← Back</a>
+  <div class="card" style="margin-top: 1.5rem;">
     <div class="card-body">
-      <h3 class="card-title">{{ product.name }}</h3>
-      <p class="text-muted mb-1">Platform: <span class="badge bg-secondary text-uppercase">{{ product.platform }}</span></p>
-      {% if product.seller %}<p class="text-muted mb-1">Seller: {{ product.seller }}</p>{% endif %}
-      <p class="fs-4 fw-bold">{{ product.currency }} {{ '%.2f'|format(product.last_price or 0) }}</p>
+      <h2 class="card-title">{{ product.name }}</h2>
+      <p class="text-muted mb-2">Platform: <span class="badge bg-secondary">{{ product.platform|upper }}</span></p>
+      {% if product.seller %}<p class="text-muted mb-2">Seller: {{ product.seller }}</p>{% endif %}
+      <p style="font-size: 1.75rem; font-weight: 600; color: var(--accent-color); margin: 1rem 0;">{{ product.currency }} {{ '%.2f'|format(product.last_price or 0) }}</p>
       <p class="text-muted">Last updated: {{ product.last_checked_at.strftime('%H:%M:%S') if product.last_checked_at else '—' }}</p>
-      <a href="{{ product.url }}" target="_blank" class="btn btn-outline-primary">View on site</a>
-      {% if user %}
-        {% if product.is_watched %}
-          <form class="d-inline" action="/unwatch/{{ product.id }}" method="POST">
-            <button class="btn btn-outline-primary" type="submit">Remove from Watchlist</button>
-          </form>
+      <div style="margin-top: 1.5rem;">
+        <a href="{{ product.url }}" target="_blank" class="btn btn-outline-primary">View on site</a>
+        {% if user %}
+          {% if product.is_watched %}
+            <form style="display: inline;" action="/unwatch/{{ product.id }}" method="POST">
+              <button class="btn btn-outline-danger" type="submit">Remove from Watchlist</button>
+            </form>
+          {% else %}
+            <form style="display: inline;" action="/watch/{{ product.id }}" method="POST">
+              <button class="btn btn-primary" type="submit">Add to Watchlist</button>
+            </form>
+          {% endif %}
         {% else %}
-          <form class="d-inline" action="/watch/{{ product.id }}" method="POST">
-            <button class="btn btn-primary" type="submit">Add to Watchlist</button>
-          </form>
+          <a class="btn btn-primary" href="/login">Login to Watch</a>
         {% endif %}
-      {% else %}
-        <a class="btn btn-primary" href="/login">Login to Watch</a>
-      {% endif %}
+      </div>
     </div>
   </div>
 
   {% if product.price_history %}
-    <div class="mt-4">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5>Recent Price History</h5>
-        <div class="btn-group" role="group">
-          <button type="button" class="btn btn-outline-secondary active" id="view-chart" onclick="showChart()">📈 Chart</button>
-          <button type="button" class="btn btn-outline-secondary" id="view-list" onclick="showList()">📋 List</button>
+    <div style="margin-top: 2rem;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+        <h3>Recent Price History</h3>
+        <div style="display: flex; gap: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; padding: 0.25rem;">
+          <button type="button" class="btn btn-sm btn-toggle-active" id="view-chart" onclick="showChart()" style="background-color: var(--primary-color); color: white;">Chart</button>
+          <button type="button" class="btn btn-sm" id="view-list" onclick="showList()" style="background-color: transparent; color: var(--text-primary);">List</button>
         </div>
       </div>
 
       <!-- Chart View -->
-      <div id="chart-container" style="display: block; position: relative; height: 300px; margin-bottom: 20px;">
+      <div id="chart-container" class="chart-container" style="display: block; position: relative; height: 300px; margin-bottom: 20px;">
         <canvas id="priceChart"></canvas>
       </div>
 
@@ -45,9 +47,9 @@
       <div id="list-container" style="display: none;">
         <ul class="list-group">
           {% for p in product.price_history[:10] %}
-            <li class="list-group-item d-flex justify-content-between align-items-center">
+            <li class="list-group-item" style="display: flex; justify-content: space-between; align-items: center;">
               <span>{{ p.created_at.strftime('%Y-%m-%d %H:%M:%S') if p.created_at else '' }}</span>
-              <span>{{ p.currency }} {{ '%.2f'|format(p.price) }}</span>
+              <span style="font-weight: 600;">{{ p.currency }} {{ '%.2f'|format(p.price) }}</span>
             </li>
           {% endfor %}
         </ul>
@@ -74,13 +76,13 @@
             datasets: [{
               label: 'Price ({{ product.currency }})',
               data: prices.map(p => p.price),
-              borderColor: '#0d6efd',
-              backgroundColor: 'rgba(13, 110, 253, 0.1)',
+              borderColor: '#8B8680',
+              backgroundColor: 'rgba(139, 134, 128, 0.08)',
               borderWidth: 2,
               tension: 0.3,
               fill: true,
               pointRadius: 4,
-              pointBackgroundColor: '#0d6efd',
+              pointBackgroundColor: '#8B8680',
               pointBorderColor: '#fff',
               pointBorderWidth: 2
             }]
@@ -89,7 +91,7 @@
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-              legend: { display: true }
+              legend: { display: true, labels: { font: { family: "'Lora', serif" } } }
             },
             scales: {
               y: { beginAtZero: false }
@@ -101,16 +103,24 @@
       function showChart() {
         document.getElementById('chart-container').style.display = 'block';
         document.getElementById('list-container').style.display = 'none';
-        document.getElementById('view-chart').classList.add('active');
-        document.getElementById('view-list').classList.remove('active');
+        document.getElementById('view-chart').classList.add('btn-toggle-active');
+        document.getElementById('view-chart').style.backgroundColor = 'var(--primary-color)';
+        document.getElementById('view-chart').style.color = 'white';
+        document.getElementById('view-list').classList.remove('btn-toggle-active');
+        document.getElementById('view-list').style.backgroundColor = 'transparent';
+        document.getElementById('view-list').style.color = 'var(--text-primary)';
         if (!priceChart) initChart();
       }
 
       function showList() {
         document.getElementById('chart-container').style.display = 'none';
         document.getElementById('list-container').style.display = 'block';
-        document.getElementById('view-chart').classList.remove('active');
-        document.getElementById('view-list').classList.add('active');
+        document.getElementById('view-chart').classList.remove('btn-toggle-active');
+        document.getElementById('view-chart').style.backgroundColor = 'transparent';
+        document.getElementById('view-chart').style.color = 'var(--text-primary)';
+        document.getElementById('view-list').classList.add('btn-toggle-active');
+        document.getElementById('view-list').style.backgroundColor = 'var(--primary-color)';
+        document.getElementById('view-list').style.color = 'white';
       }
 
       // Initialize chart on page load

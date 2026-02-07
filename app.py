@@ -215,6 +215,51 @@ def logout():
     return redirect(url_for('index'))
 
 
+@app.route('/profile')
+def profile():
+    db = Session()
+    user = current_user(db)
+    if not user:
+        return redirect(url_for('login_page'))
+    return render_template('profile.html', user=user)
+
+
+@app.route('/change-password', methods=['GET', 'POST'])
+def change_password():
+    db = Session()
+    user = current_user(db)
+    if not user:
+        return redirect(url_for('login_page'))
+    
+    if request.method == 'POST':
+        current_password = request.form.get('current_password', '')
+        new_password = request.form.get('new_password', '')
+        confirm_password = request.form.get('confirm_password', '')
+        
+        # Validate current password
+        if not check_password_hash(user.password_hash, current_password):
+            flash('Current password is incorrect.', 'danger')
+            return redirect(url_for('change_password'))
+        
+        # Validate new password
+        if len(new_password) < 8:
+            flash('New password must be at least 8 characters long.', 'danger')
+            return redirect(url_for('change_password'))
+        
+        # Check if passwords match
+        if new_password != confirm_password:
+            flash('New passwords do not match.', 'danger')
+            return redirect(url_for('change_password'))
+        
+        # Update password
+        user.password_hash = generate_password_hash(new_password)
+        db.commit()
+        flash('Password changed successfully!', 'success')
+        return redirect(url_for('profile'))
+    
+    return render_template('change-password.html', user=user)
+
+
 @app.route('/dashboard')
 def dashboard():
     db = Session()

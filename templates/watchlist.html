@@ -1,12 +1,12 @@
 {% extends 'base.html' %}
 {% block title %}Watchlist • PriceTrak{% endblock %}
 {% block content %}
-  <h3 class="fw-bold">Your Watchlist</h3>
+  <h2>Your Watchlist</h2>
   {% if not items %}
-    <p class="text-muted">No items yet. Paste a link on the dashboard and add to your watchlist.</p>
+    <p class="text-muted" style="margin-top: 2rem;">No items yet. Paste a link on the dashboard and add to your watchlist.</p>
   {% else %}
     <div class="table-responsive">
-      <table class="table table-striped align-middle">
+      <table class="table align-middle">
         <thead>
           <tr>
             <th>Name</th>
@@ -14,19 +14,19 @@
             <th>Seller</th>
             <th>Price</th>
             <th>Last Update</th>
-            <th></th>
+            <th style="width: 100px; text-align: right;">Action</th>
           </tr>
         </thead>
         <tbody>
           {% for w in items %}
             <tr>
               <td><a href="/product/{{ w.product.id }}">{{ w.product.name }}</a></td>
-              <td class="text-uppercase"><span class="badge bg-secondary">{{ w.product.platform }}</span></td>
+              <td><span class="badge bg-secondary">{{ w.product.platform|upper }}</span></td>
               <td>{{ w.seller or w.product.seller or '—' }}</td>
-              <td>{{ w.product.currency }} {{ '%.2f'|format(w.product.last_price or 0) }}</td>
-                  <td>{% if w.product.last_checked_at %}{{ w.product.last_checked_at.strftime('%Y-%m-%d %H:%M:%S') }}{% else %}—{% endif %}</td>
-              <td class="text-end">
-                <form action="/unwatch/{{ w.product.id }}" method="POST">
+              <td style="font-weight: 500;">{{ w.product.currency }} {{ '%.2f'|format(w.product.last_price or 0) }}</td>
+              <td style="color: var(--text-secondary); font-size: 0.9rem;">{% if w.product.last_checked_at %}{{ w.product.last_checked_at.strftime('%Y-%m-%d %H:%M:%S') }}{% else %}—{% endif %}</td>
+              <td style="text-align: right;">
+                <form action="/unwatch/{{ w.product.id }}" method="POST" style="display: inline;">
                   <button class="btn btn-sm btn-outline-danger">Remove</button>
                 </form>
               </td>

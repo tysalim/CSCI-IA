@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block title %}Profile • PriceTrak{% endblock %}
+{% block content %}
+  <div style="max-width: 600px; margin: 0 auto;">
+    <h2 style="margin-bottom: 2rem;">Account Settings</h2>
+    
+    <div class="card" style="margin-bottom: 1.5rem;">
+      <div class="card-body">
+        <h3 style="font-size: 1.25rem; margin-bottom: 1rem;">Profile Information</h3>
+        <div style="margin-bottom: 1rem;">
+          <p style="color: var(--text-secondary); margin-bottom: 0.25rem;">Username</p>
+          <p style="font-weight: 500;">{{ user.username }}</p>
+        </div>
+        <div style="margin-bottom: 1rem;">
+          <p style="color: var(--text-secondary); margin-bottom: 0.25rem;">Email</p>
+          <p style="font-weight: 500;">{{ user.email }}</p>
+        </div>
+        <div style="margin-bottom: 1rem;">
+          <p style="color: var(--text-secondary); margin-bottom: 0.25rem;">Member Since</p>
+          <p style="font-weight: 500;">{{ user.created_at.strftime('%B %d, %Y') if user.created_at else 'N/A' }}</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-body">
+        <h3 style="font-size: 1.25rem; margin-bottom: 1rem;">Security</h3>
+        <p class="text-muted" style="margin-bottom: 1rem;">Keep your account secure by regularly updating your password.</p>
+        <a href="/change-password" class="btn btn-primary">Change Password</a>
+      </div>
+    </div>
+
+    <p style="text-align: center; margin-top: 2rem; color: var(--text-secondary);">
+      <a href="/dashboard">Back to dashboard</a>
+    </p>
+  </div>
+{% endblock %}

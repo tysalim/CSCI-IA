@@ -5,46 +5,63 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}PriceTrak{% endblock %}</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
 </head>
 
-<body class="bg-light">
-  <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+<body class="pt-minimal">
+  <nav class="navbar navbar-expand-lg navbar-custom">
     <div class="container">
-      <a class="navbar-brand fw-bold" href="/">PriceTrak</a>
-      <div>
-        {% if user %}
-          <a class="btn btn-outline-light btn-sm me-2" href="/dashboard">Dashboard</a>
-          <a class="btn btn-outline-light btn-sm me-2" href="/watchlist">Watchlist</a>
-          <span class="text-white me-2">Hi, {{ user.username }}</span>
-          <a class="btn btn-light btn-sm" href="/logout">Logout</a>
-        {% else %}
-          <a class="btn btn-light btn-sm me-2" href="/login">Login</a>
-          <a class="btn btn-outline-light btn-sm" href="/signup">Sign up</a>
-        {% endif %}
+      <a class="navbar-brand" href="/">PriceTrak</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <div class="ms-auto d-flex align-items-center gap-2">
+          {% if user %}
+            <a class="nav-link" href="/dashboard">Dashboard</a>
+            <a class="nav-link" href="/watchlist">Watchlist</a>
+            <div class="dropdown">
+              <button class="btn btn-link nav-link dropdown-toggle p-0" type="button" id="userMenu" data-bs-toggle="dropdown" aria-expanded="false">
+                {{ user.username }}
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userMenu">
+                <li><a class="dropdown-item" href="/profile">Profile</a></li>
+                <li><a class="dropdown-item" href="/change-password">Change Password</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="/logout">Logout</a></li>
+              </ul>
+            </div>
+          {% else %}
+            <a class="nav-link" href="/login">Login</a>
+            <a class="nav-link nav-link-signup" href="/signup">Sign up</a>
+          {% endif %}
+        </div>
       </div>
     </div>
   </nav>
 
-  <div class="container mt-5">
+  <div class="container-content">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
-        <div class="mt-3">
+        <div class="alerts-container">
           {% for category, msg in messages %}
-            {# normalize category to a bootstrap alert class; default to 'info' #}
-            {% set cat = category if category in ['primary','secondary','success','danger','warning','info','light','dark'] else 'info' %}
-            <div class="alert alert-{{ cat }}" role="alert">{{ msg }}</div>
+            {% set cat_map = {'primary':'info', 'secondary':'info', 'success':'success', 'danger':'danger', 'warning':'warning', 'info':'info', 'light':'info', 'dark':'info'} %}
+            {% set mapped_cat = cat_map.get(category, 'info') %}
+            <div class="alert alert-{{ mapped_cat }}" role="alert">{{ msg }}</div>
           {% endfor %}
         </div>
       {% endif %}
     {% endwith %}
 
     {% block content %}{% endblock %}
-
-    <footer class="mt-5 text-muted text-center">
-      <small>&copy; 2025 PriceTrak • Built with Flask, SQLite, and BeautifulSoup</small>
-    </footer>
   </div>
+
+  <footer class="footer-minimal">
+    <p>&copy; 2025 PriceTrak • Built with Flask, SQLite, and BeautifulSoup</p>
+  </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
